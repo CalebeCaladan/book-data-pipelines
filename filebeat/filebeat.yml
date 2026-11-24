@@ -1,0 +1,120 @@
+filebeat.inputs:
+
+# input that reads local files from custom recon tooling
+- type: filestream
+  id: recon-logs
+  enabled: true
+  paths:
+    - /home/node1/example-logs/subfinder*.json
+    - /home/node1/example-logs/httpx*.json
+  parsers:
+    - ndjson:
+        target: "processed"
+        add_error_key: true
+  fields_under_root: true
+  fields:
+    threat.tactic.name: "Reconnaissance"
+    threat.tactic.id: "TA0043"
+    threat.technique.name: "Gather Victim Network Information"
+    threat.technique.id: "T1590"
+
+# input that reads /var/log/*.log
+# see also the system module
+#	filebeat modules enable system
+#	# enable settings in modules.d/system.yml
+#	# then run filebeat
+- type: filestream
+  id: local-syslog-files
+  enabled: false
+  paths:
+    - /var/log/*.log
+  exclude_lines: ['.*UFW.*']
+  parsers:
+    - syslog:
+        format: auto
+        add_error_key: true
+
+- type: syslog
+  id: syslog-tcp-5514
+  enabled: true
+  format: auto
+  tags: ["forwarded"]
+  protocol.tcp:
+    host: "localhost:5514"
+  exclude_lines: ['.*UFW.*']
+
+# input that connects over plaintext to Kafka
+- type: kafka
+  enabled: false
+  hosts:
+    - kafka01:9093
+    - kafka02:9093
+  topics: [ "filebeat" ]
+  group_id: "filebeat"
+  tags: [ "from-kafka" ]
+  parsers:
+    - ndjson:
+        message_key: "message"
+        target: "processed"
+        overwrite_keys: true
+        add_error_key: true
+        
+processors:
+  # fix a nested timestamp
+  - script:
+      lang: javascript
+      # example
+      # 2099-04-27T22:37:12.463504006-05:00
+      #          | 10         |23    |29
+      source: >
+        function process(event) {
+          event.Put("user.name", "BankUser")
+        }
+      when:
+        has_fields: [ "user.name" ]
+
+  # use as document timestamp, instead of "now" time
+  - timestamp:
+      field: "processed.timestamp_fixed"
+      layouts:
+        - '2006-01-02T15:04:05.999-07:00'
+      test:
+        - '2099-04-27T22:37:12.463-05:00'
+      when:
+        has_fields: [ "processed.timestamp_fixed" ]
+
+  - drop_fields:
+      fields: ["agent", "ecs", "event.severity", "host", "input", "log", "syslog", "tags"]
+      when:
+        or:
+          - contains:
+              log.file.path: "/home/node1/example-logs/"
+          - equals:
+              input.type: "syslog"
+          - contains:
+              tags: "from-kafka"
+
+# Module location
+filebeat.config.modules:
+  path: ${path.config}/modules.d/*.yml
+tags: ["tags-for-everybody", "you-get-a-tag", "and-you-get-a-tag"]
+
+output.logstash:
+  enabled: true
+  hosts: ["logstash.local:5044"]
+  workers: 2
+  compression_level: 9
+  ssl.enabled: true
+  ssl.verification_mode: full
+  ssl.certificate: "/home/node1/tls/certs/filebeat.local.flex.cert.pem"
+  ssl.key: "/home/node1/tls/keys/filebeat.local.flex.key.pem"
+  ssl.key_passphrase: "REDACTED"
+  ssl.certificate_authorities:
+    - /home/node1/tls/certs/ca-chain.cert.pem
+
+
+output.file:
+  enabled: false
+  path: /home/node1/filebeat-output/
+  rotate_every_kb: 100000
+  number_of_files: 10
