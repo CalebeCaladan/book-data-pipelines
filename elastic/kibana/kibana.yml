@@ -1,0 +1,31 @@
+server.publicBaseUrl: "https://kibana.local:5601"
+pid.file: /run/kibana/kibana.pid
+server.host: "kibana.local"
+server.port: 5601
+
+elasticsearch.hosts: ["https://elasticsearch01.local:9200"]
+elasticsearch.username: "kibana_system"
+elasticsearch.ssl.verificationMode: "full"
+elasticsearch.ssl.keystore.path: "/etc/kibana/certs/wildcard.local.flex.pkcs12"
+elasticsearch.ssl.certificateAuthorities: ["/etc/kibana/certs/ca-chain.cert.pem"]
+
+server.ssl.enabled: true
+server.ssl.clientAuthentication: none
+server.ssl.keystore.path: "/etc/kibana/certs/wildcard.local.flex.pkcs12"
+server.ssl.certificateAuthorities: ["/etc/kibana/certs/ca-chain.cert.pem"]
+
+logging:
+  appenders:
+    file:
+      type: file
+      fileName: /var/log/kibana/kibana.log
+      layout:
+        type: json
+  root:
+    appenders:
+      - default
+      - file
+
+xpack.encryptedSavedObjects.encryptionKey: "REDACTED"
+xpack.reporting.encryptionKey: "REDACTED"
+xpack.security.encryptionKey: "REDACTED"
